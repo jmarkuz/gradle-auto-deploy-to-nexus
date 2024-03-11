@@ -1,0 +1,28 @@
+// To upload artifacts from this project, run "gradle upload"
+apply plugin: 'java'
+apply plugin: 'maven'
+
+repositories {
+    maven {
+        url "http://localhost:8081/nexus/content/groups/public"
+    }
+}
+
+dependencies {
+    testCompile "junit:junit:4.13.2"
+    compile "org.jbundle.util:org.jbundle.util.jbackup:2.0.9"
+    compile "net.sf.webtestfixtures:webtestfixtures:2.0.1.3"
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            repository(url: "http://localhost:8081/nexus/content/repositories/snapshots") {
+                authentication(userName: "user", password: "password")
+            }
+            pom.version = "1.0-SNAPSHOT"
+            pom.artifactId = "autodeploy-demo"
+            pom.groupId = "com.autodeploy.demo"
+        }
+    }
+}
