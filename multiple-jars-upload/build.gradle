@@ -1,0 +1,125 @@
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'maven-publish'
+
+sourceCompatibility = 1.7
+group = 'com.company.example'
+version = '1.0-SNAPSHOT'
+description = "GradleTest - test project for gradle build."
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+    compile 'org.codehaus.groovy:groovy-all:2.4.10'
+    compile 'org.hibernate:hibernate:3.5.4-Final'
+    compile 'org.springframework:spring-core:3.0.5.RELEASE'
+    compile 'org.springframework:spring-beans:4.0.5.RELEASE'
+    compile 'org.springframework:spring-context:4.0.5.RELEASE'
+    compile 'org.springframework:spring-aop:4.0.5.RELEASE'
+    compile 'org.springframework:spring-web:4.0.5.RELEASE'
+    compile project(':m0')
+    compile project(':m1')
+    compile project(':m2')
+}
+
+task assembleJar(type: Jar) {
+    manifest {
+        attributes 'Implementation-Title': 'Gradle assembled Jar File Example',
+                'Implementation-Version': version,
+                'Main-Class': 'com.company.Main'
+    }
+    baseName = project.name + '-assembled'
+    from {
+        configurations.compile.collect {
+            it.isDirectory() ? it : zipTree(it)
+        }
+    }
+    with jar
+}
+
+repositories {
+    maven {
+        url "http://localhost:8081/nexus/content/groups/public"
+    }
+}
+
+task cleanLibs(type: Copy) {
+    delete "$buildDir/../../libs"
+}
+
+task copyLibs(type: Copy) {
+    mkdir "$buildDir/../../libs"
+    into "$buildDir/../../libs"
+    from configurations.runtime
+}
+
+copyLibs.dependsOn cleanLibs
+
+task copyJars(type: Copy, dependsOn: subprojects.jar) {
+    eachFile { fileCopyDetails ->
+        projectLibs.add(fileCopyDetails.name)
+    }
+    from(subprojects.jar)
+    into file('lib')
+}
+
+task copyDeps(type: Copy, dependsOn: copyJars) {
+    eachFile { fileCopyDetails ->
+        if (fileCopyDetails.name in projectLibs) {
+            fileCopyDetails.exclude()
+        }
+    }
+    from(subprojects.configurations.runtime)
+    into file('lib/ext')
+}
+
+configurations {
+    allJars
+}
+
+task discoverAllJars {
+    ext.discoveredFiles = "$buildDir/libs"
+    doLast {
+        file("build/libs").eachFile { file ->
+            if (file.name.endsWith("jar")) {
+                println "found file ${file.name}"
+                discoveredFiles << file
+                artifacts {
+                    allJars file
+                }
+            }
+        }
+    }
+}
+
+task configureUploadAllJars {
+    dependsOn discoverAllJars
+    doLast {
+        uploadAllJars {
+            repositories {
+                mavenDeployer {
+                    mavenLocal()
+                    repository(url: "${nexusUrl}/content/repositories/releases") {
+                        authentication(userName: nexusUsername, password: nexusPassword)
+                    }
+                    snapshotRepository(url: "${nexusUrl}/content/repositories/snapshots") {
+                        authentication(userName: nexusUsername, password: nexusPassword)
+                    }
+                    discoverAllJars.discoveredFiles.each { File discoveredFile ->
+                        def filterName = discoveredFile.name - ".jar"
+                        println "filter name: " + filterName
+                        addFilter(filterName) { artifact, file ->
+                            file.name == discoveredFile.name
+                        }
+                        pom(filterName).artifactId = filterName
+                    }
+                }
+            }
+        }
+    }
+}
+
+uploadAllJars.dependsOn configureUploadAllJars
